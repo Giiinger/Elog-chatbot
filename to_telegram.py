@@ -1,5 +1,7 @@
 import logging
+import threading
 from telegram import Update
+from flask import Flask
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from openai import AzureOpenAI
 from dotenv import load_dotenv
@@ -29,7 +31,7 @@ user_logs = {}
 def get_gpt_response(user_id: int, user_input: str):
     history = user_logs.get(user_id, [])
     history.append({"role": "user", "content": user_input})
-
+    #프롬프트
     messages = [{"role": "system", "content": "당신은 감정 코칭 챗봇입니다. 사용자의 기분에 공감하고, 따뜻한 피드백을 주세요."}]
     messages += history[-6:]  # 최근 대화만 유지
 
@@ -58,12 +60,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("안녕하세요! 오늘 기분이 어떤가요?")
 
-# ✅ 메인 실행 함수
-def main():
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.run_polling()
+# ✅ Flask 서버 (Render가 포트 열렸는지 감지용)
+web_app = Flask(__name__)
 
+@web_app.route('/')
+def home():
+    return "I'm alive!"
+
+def run_flask():
+    web_app.run(host='0.0.0.0', port=8080)
+
+def start_keep_alive():
+    thread = threading.Thread(target=run_flask)
+    thread.start()
+
+# ✅ 챗봇 실행 함수
+def run_bot():
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.run_polling()
+
+# ✅ 실행 시작
 if __name__ == "__main__":
-    main()
+    start_keep_alive()  # 포트 열기
+    run_bot()           # 텔레그램 챗봇 실행
